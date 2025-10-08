@@ -1,0 +1,70 @@
+name: Test
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - "releases/*"
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+
+      - run: npm run lint
+      - run: npm run build
+
+      - run: git diff -aw --exit-code dist/index.js
+
+  test-single:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        ndk-version: [r29, r26d]
+        local-cache: [true, false]
+      fail-fast: false
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./
+        id: install-clang
+        with:
+          ndk-version: ${{ matrix.ndk-version }}
+          local-cache: ${{ matrix.local-cache }}
+
+      - run: clang --version
+        shell: bash
+      - run: ${{ steps.install-clang.outputs.clang-path }}/bin/clang --version
+        shell: bash
+
+  test-multiple:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        local-cache: [true, false]
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./
+        id: install-clang-r29
+        with:
+          ndk-version: r29
+          add-to-path: false
+          local-cache: ${{ matrix.local-cache }}
+      - uses: ./
+        id: install-clang-r26d
+        with:
+          ndk-version: r26d
+          add-to-path: false
+          local-cache: ${{ matrix.local-cache }}
+
+      - run: "! which clang || clang --version"
+      - run: ${{ steps.install-clang-r29.outputs.clang-path }}/bin/clang --version
+      - run: ${{ steps.install-clang-r26d.outputs.clang-path }}/bin/clang --version

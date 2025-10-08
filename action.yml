@@ -1,0 +1,28 @@
+name: Setup NDK Clang
+description: Setup an NDK Clang prebuilt toolchain by downloading and optionally caching it and adding it to the PATH
+author: ylarod
+branding:
+  icon: package
+  color: blue
+
+inputs:
+  ndk-version:
+    description: NDK version (e.g., r29, r28c, r27d, r26d, r25c)
+    required: true
+  add-to-path:
+    description: Add installation directory's bin folder to the PATH
+    required: false
+    default: "true"
+  local-cache:
+    description: Use the local job cache on top of the runner tool cache
+    required: false
+    default: "false"
+outputs:
+  clang-path:
+    description: Installation path of the clang toolchain
+  ndk-version:
+    description: NDK version used
+
+runs:
+  using: node20
+  main: dist/index.js
