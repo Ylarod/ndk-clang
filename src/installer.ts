@@ -1,14 +1,12 @@
-import { mkdir, readFile } from "node:fs/promises"
+import { mkdir, readFile, rm } from "node:fs/promises"
 import * as os from "node:os"
 import * as path from "node:path"
 
-import * as cache from "@actions/cache"
 import * as core from "@actions/core"
 import * as tc from "@actions/tool-cache"
 
 interface Options {
   addToPath: boolean
-  localCache: boolean
 }
 
 interface Mapping {
@@ -19,53 +17,24 @@ export async function getClang(version: string, options: Options) {
   checkCompatibility()
 
   const clangRevision = await getClangRevision(version)
-  const cacheKey = getCacheKey(version, clangRevision)
-  const cacheDir = path.join(
+  const installDir = path.join(
     os.homedir(),
     ".setup-ndk-clang",
     version,
     clangRevision,
   )
 
-  let installPath: string
-  installPath = tc.find("ndk-clang", `${version}-${clangRevision}`)
+  core.info(`Attempting to download ndk-${version} clang-${clangRevision}...`)
+  const downloadUrl = getDownloadUrl(version, clangRevision)
+  const archivePath = await tc.downloadTool(downloadUrl)
 
-  if (installPath) {
-    core.info(`Found in tool cache @ ${installPath}`)
-  } else if (options.localCache) {
-    const restored = await cache.restoreCache([cacheDir], cacheKey)
-    if (restored === cacheKey) {
-      core.info(`Found in local cache @ ${cacheDir}`)
-      installPath = cacheDir
-    }
-  }
+  core.info(`Extracting to ${installDir}...`)
+  await rm(installDir, { recursive: true, force: true })
+  await mkdir(installDir, { recursive: true })
+  await extractArchiveTo(archivePath, installDir)
 
-  if (!installPath) {
-    core.info(`Attempting to download ndk-${version} clang-${clangRevision}...`)
-    const downloadUrl = getDownloadUrl(version, clangRevision)
-    const downloadPath = await tc.downloadTool(downloadUrl)
-
-    core.info("Extracting...")
-    const extractedPath = await extractArchive(downloadPath)
-
-    core.info("Adding to the tool cache...")
-    installPath = await tc.cacheDir(
-      extractedPath,
-      "ndk-clang",
-      `${version}-${clangRevision}`,
-    )
-
-    if (options.localCache) {
-      core.info("Adding to the local cache...")
-      const { cp } = await import("node:fs/promises")
-      await mkdir(cacheDir, { recursive: true })
-      await cp(installPath, cacheDir, { recursive: true })
-      await cache.saveCache([cacheDir], cacheKey)
-      installPath = cacheDir
-    }
-
-    core.info("Done")
-  }
+  const installPath = installDir
+  core.info("Done")
 
   if (options.addToPath) {
     const binPath = path.join(installPath, "bin")
@@ -99,19 +68,13 @@ async function getClangRevision(ndkVersion: string): Promise<string> {
   return clangRevision
 }
 
-async function extractArchive(downloadPath: string): Promise<string> {
+async function extractArchiveTo(archive: string, dest: string): Promise<void> {
   const platform = os.platform()
-
   if (platform === "win32") {
-    return await tc.extractTar(downloadPath, undefined, [
-      "-x",
-      "--use-compress-program=zstd -d",
-    ])
+    await tc.extractTar(archive, dest, ["-x", "--use-compress-program=zstd"])
+  } else {
+    await tc.extractTar(archive, dest, ["-x", "--use-compress-program=unzstd"])
   }
-  return await tc.extractTar(downloadPath, undefined, [
-    "-x",
-    "--use-compress-program=unzstd",
-  ])
 }
 
 function checkCompatibility() {
@@ -138,11 +101,6 @@ function getPlatformString() {
     default:
       throw new Error(`Unsupported platform: ${platform}`)
   }
-}
-
-function getCacheKey(version: string, clangRevision: string) {
-  const platform = getPlatformString()
-  return `setup-ndk-clang-${version}-${clangRevision}-${platform}`
 }
 
 function getDownloadUrl(version: string, clangRevision: string) {

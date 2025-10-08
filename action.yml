@@ -13,10 +13,6 @@ inputs:
     description: Add installation directory's bin folder to the PATH
     required: false
     default: "true"
-  local-cache:
-    description: Use the local job cache on top of the runner tool cache
-    required: false
-    default: "false"
 outputs:
   clang-path:
     description: Installation path of the clang toolchain

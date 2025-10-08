@@ -27,17 +27,16 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest, macos-13]
         ndk-version: [r29, r26d]
-        local-cache: [true, false]
       fail-fast: false
 
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
-      - uses: ./
+      - name: Install NDK Clang ${{ matrix.ndk-version }}
+        uses: ./
         id: install-clang
         with:
           ndk-version: ${{ matrix.ndk-version }}
-          local-cache: ${{ matrix.local-cache }}
 
       - run: clang --version
         shell: bash
@@ -46,24 +45,20 @@ jobs:
 
   test-multiple:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        local-cache: [true, false]
-
     steps:
       - uses: actions/checkout@v5
-      - uses: ./
+      - name: Install NDK Clang r29
+        uses: ./
         id: install-clang-r29
         with:
           ndk-version: r29
           add-to-path: false
-          local-cache: ${{ matrix.local-cache }}
-      - uses: ./
+      - name: Install NDK Clang r26d
+        uses: ./
         id: install-clang-r26d
         with:
           ndk-version: r26d
           add-to-path: false
-          local-cache: ${{ matrix.local-cache }}
 
       - run: "! which clang || clang --version"
       - run: ${{ steps.install-clang-r29.outputs.clang-path }}/bin/clang --version
