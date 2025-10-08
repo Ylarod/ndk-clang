@@ -39,9 +39,10 @@ jobs:
           ndk-version: ${{ matrix.ndk-version }}
 
       - run: clang --version
-        shell: bash
-      - run: ${{ steps.install-clang.outputs.clang-path }}/bin/clang --version
-        shell: bash
+      - if: runner.os != 'Windows'
+        run: ${{ steps.install-clang.outputs.clang-path }}/bin/clang --version
+      - if: runner.os == 'Windows'
+        run: ${{ steps.install-clang.outputs.clang-path }}\bin\clang.exe --version
 
   test-multiple:
     runs-on: ubuntu-latest
