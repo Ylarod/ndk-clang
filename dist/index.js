@@ -41339,22 +41339,18 @@ async function getClangRevision(ndkVersion) {
 async function extractArchive(downloadPath) {
     const platform = os.platform();
     if (platform === "win32") {
-        // Windows uses 7z for .tar.zst
-        const extractedPath = await tc.extract7z(downloadPath);
-        // Extract the .tar file from .tar.zst
-        const tarPath = path.join(extractedPath, path.basename(downloadPath, ".zst"));
-        return await tc.extractTar(tarPath);
-    }
-    else {
-        // Linux and macOS can use tar with zstd
         return await tc.extractTar(downloadPath, undefined, [
             "-x",
-            "--use-compress-program=unzstd",
+            "--use-compress-program=zstd -d",
         ]);
     }
+    return await tc.extractTar(downloadPath, undefined, [
+        "-x",
+        "--use-compress-program=unzstd",
+    ]);
 }
 function checkCompatibility() {
-    const supported = ["linux-x64", "win32-x64", "darwin-x64"];
+    const supported = ["linux-x64", "win32-x64", "darwin-x64", "darwin-arm64"];
     const platform = os.platform();
     const arch = os.arch();
     const host = `${platform}-${arch}`;
