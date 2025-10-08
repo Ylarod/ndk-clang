@@ -1,0 +1,209 @@
+name: Repack Clang prebuilts and publish prebuilt release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - mapping.json
+      - .github/workflows/repack-and-release.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repack-release
+  cancel-in-progress: true
+
+env:
+  RELEASE_TAG: prebuilt
+
+jobs:
+  build:
+    name: Build assets for ${{ matrix.host }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        host: [linux-x86, darwin-x86, windows-x86]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends zstd jq
+
+      - name: Ensure release exists (reuse, do not recreate if exists)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+            echo "Release '${RELEASE_TAG}' exists. Reusing it."
+          else
+            echo "Creating release '${RELEASE_TAG}' on main..."
+            # In case of race between matrix jobs, ignore failure if another job creates it first
+            gh release create "${RELEASE_TAG}" \
+              --target main \
+              --title "NDK Clang prebuilts (from mapping.json)" \
+              --notes "Auto-created placeholder for repackaged Clang prebuilts from mapping.json." \
+              --latest || true
+          fi
+
+      - name: Build missing assets for ${{ matrix.host }}
+        id: loop
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          HOST='${{ matrix.host }}'
+          mkdir -p work/${HOST}
+          : > work/${HOST}/new_files.txt
+
+          # Get current release asset names (if release exists)
+          CURRENT_NAMES=""
+          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+            CURRENT_NAMES=$(gh release view "${RELEASE_TAG}" --json assets -q '.assets[].name' || true)
+          fi
+
+          # Iterate mapping: for each NDK tag and revision
+          jq -r '.mapping | to_entries[] | "\(.key) \(.value)"' mapping.json | while read -r NDK_TAG CLANG_REV; do
+            OUTFILE="clang-${HOST}-ndk-${NDK_TAG}-${CLANG_REV}.tar.zst"
+            SHAFILE="${OUTFILE}.sha256"
+
+            if echo "$CURRENT_NAMES" | grep -qx "${OUTFILE}" && echo "$CURRENT_NAMES" | grep -qx "${SHAFILE}"; then
+              echo "[${HOST}] ${NDK_TAG}/${CLANG_REV} already present; skipping."
+              continue
+            fi
+
+            echo "[${HOST}] Building ${NDK_TAG}/${CLANG_REV}..."
+            rm -rf work/${HOST}/src work/${HOST}/out
+            mkdir -p work/${HOST}/src work/${HOST}/out
+
+            ARCHIVE_URL="https://android.googlesource.com/platform/prebuilts/clang/host/${HOST}/+archive/refs/tags/ndk-${NDK_TAG}/clang-${CLANG_REV}.tar.gz"
+            echo "Downloading tar.gz via +archive: ${ARCHIVE_URL}"
+            curl -fL --retry 3 --connect-timeout 15 -o work/${HOST}/src/clang-${CLANG_REV}.tar.gz "${ARCHIVE_URL}"
+
+            echo "Extracting clang-${CLANG_REV}.tar.gz ..."
+            tar -C work/${HOST}/out -xzf work/${HOST}/src/clang-${CLANG_REV}.tar.gz
+
+            echo "Repacking to zstd (reproducible)..."
+            export TZ=UTC
+            export LC_ALL=C
+            export SOURCE_DATE_EPOCH=0
+            tar \
+              --format=gnu \
+              --sort=name \
+              --owner=0 --group=0 --numeric-owner \
+              --mtime='@0' \
+              -C work/${HOST}/out \
+              -I 'zstd -19 -T0 --no-progress' \
+              -cf work/${HOST}/${OUTFILE} .
+
+            echo "Computing SHA256..."
+            (cd work/${HOST} && sha256sum "${OUTFILE}") > work/${HOST}/"${OUTFILE}.sha256"
+
+            echo "work/${HOST}/${OUTFILE}" >> work/${HOST}/new_files.txt
+            echo "work/${HOST}/${OUTFILE}.sha256" >> work/${HOST}/new_files.txt
+          done
+
+          # Set output if we created any new files
+          if [[ -s work/${HOST}/new_files.txt ]]; then
+            echo "has_new=true" >> "$GITHUB_OUTPUT"
+            echo "files<<EOF" >> "$GITHUB_OUTPUT"
+            cat work/${HOST}/new_files.txt >> "$GITHUB_OUTPUT"
+            echo "EOF" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_new=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload newly built assets to latest release (${{ matrix.host }})
+        if: steps.loop.outputs.has_new == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILES='${{ steps.loop.outputs.files }}'
+          if [[ -z "$FILES" ]]; then
+            echo "No files to upload for this host."; exit 0
+          fi
+          # Convert multiline output to array
+          mapfile -t TO_UPLOAD < <(printf '%s\n' "$FILES")
+          echo "Uploading ${#TO_UPLOAD[@]} assets to '${RELEASE_TAG}'..."
+          gh release upload "${RELEASE_TAG}" "${TO_UPLOAD[@]}" --clobber=false
+
+  update-notes:
+    name: Update release notes from mapping.json
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install jq
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends jq
+
+      - name: Ensure latest release exists (reuse, do not recreate if exists)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+            echo "Release '${RELEASE_TAG}' exists."
+          else
+            echo "Creating release '${RELEASE_TAG}' on main..."
+            gh release create "${RELEASE_TAG}" \
+              --target main \
+              --title "NDK Clang prebuilts (from mapping.json)" \
+              --notes "Auto-created placeholder for repackaged Clang prebuilts from mapping.json." \
+              --latest
+          fi
+
+      - name: Generate and update release notes
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          HOSTS=(linux-x86 darwin-x86 windows-x86)
+          ASSET_NAMES=$(gh release view "${RELEASE_TAG}" --json assets -q '.assets[].name' || true)
+
+          NOTES_FILE=notes.txt
+          {
+            echo "This release contains repackaged Android Clang prebuilts from android.googlesource.com."
+            echo
+            echo "Files are re-compressed to .tar.zst with zstd -19 using reproducible tar options."
+            echo
+            echo "## Assets from mapping.json"
+            echo "(Generated automatically based on current release assets and mapping.json)"
+            echo
+          } > "$NOTES_FILE"
+
+          # Iterate mapping entries and list available hosts for each
+          while read -r NDK_TAG CLANG_REV; do
+            PRESENT_HOSTS=()
+            for H in "${HOSTS[@]}"; do
+              NAME="clang-${H}-ndk-${NDK_TAG}-${CLANG_REV}.tar.zst"
+              if echo "$ASSET_NAMES" | grep -qx "$NAME"; then
+                PRESENT_HOSTS+=("$H")
+              fi
+            done
+            if [[ ${#PRESENT_HOSTS[@]} -gt 0 ]]; then
+              echo "### ndk-${NDK_TAG} (${CLANG_REV})" >> "$NOTES_FILE"
+              for H in "${PRESENT_HOSTS[@]}"; do
+                echo "- ${H}" >> "$NOTES_FILE"
+              done
+              echo >> "$NOTES_FILE"
+            fi
+          done < <(jq -r '.mapping | to_entries[] | "\(.key) \(.value)"' mapping.json)
+
+          echo "Updating release notes..."
+          gh release edit "${RELEASE_TAG}" --notes-file "$NOTES_FILE"
