@@ -62,7 +62,6 @@ steps:
   - uses: Ylarod/setup-ndk-clang@v1
     with:
       ndk-version: r29
-      local-cache: true
 ```
 
 ### 多版本工具链
@@ -92,11 +91,10 @@ steps:
 
 ## Action 输入参数
 
-| 参数          | 说明                                          | 必填 | 默认值  |
-| ------------- | --------------------------------------------- | ---- | ------- |
-| `ndk-version` | NDK 版本（例如：r29, r28c, r27d, r26d, r25c） | 是   | -       |
-| `add-to-path` | 是否将安装目录的 bin 文件夹添加到 PATH        | 否   | `true`  |
-| `local-cache` | 在运行器工具缓存之上使用本地作业缓存          | 否   | `false` |
+| 参数          | 说明                                          | 必填 | 默认值 |
+| ------------- | --------------------------------------------- | ---- | ------ |
+| `ndk-version` | NDK 版本（例如：r29, r28c, r27d, r26d, r25c） | 是   | -      |
+| `add-to-path` | 是否将安装目录的 bin 文件夹添加到 PATH        | 否   | `true` |
 
 ## Action 输出参数
 
@@ -158,11 +156,6 @@ sha256sum -c clang-linux-x86-ndk-r29-r563880c.tar.zst.sha256
 2. 下载对应平台的预编译 Clang 工具链
 3. 解压并缓存工具链到运行器的工具缓存
 4. 可选地添加工具链的 bin 目录到 PATH
-
-## 缓存机制
-
-- **工具缓存**：默认使用 GitHub Actions 的工具缓存，在同一运行器上的不同工作流运行之间共享
-- **本地缓存**：启用 `local-cache: true` 时，还会使用 GitHub Actions 的缓存机制在工作流运行之间保存工具链
 
 ## 从源码构建
 

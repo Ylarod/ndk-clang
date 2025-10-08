@@ -62,7 +62,6 @@ steps:
   - uses: Ylarod/setup-ndk-clang@v1
     with:
       ndk-version: r29
-      local-cache: true
 ```
 
 ### Multiple Toolchain Versions
@@ -96,7 +95,6 @@ steps:
 | ------------- | ------------------------------------------------------- | -------- | ------- |
 | `ndk-version` | NDK version (e.g., r29, r28c, r27d, r26d, r25c)         | Yes      | -       |
 | `add-to-path` | Add the installation directory's bin folder to the PATH | No       | `true`  |
-| `local-cache` | Use the local job cache on top of the runner tool cache | No       | `false` |
 
 ## Action Outputs
 
@@ -158,11 +156,6 @@ sha256sum -c clang-linux-x86-ndk-r29-r563880c.tar.zst.sha256
 2. Downloads the prebuilt Clang toolchain for the corresponding platform
 3. Extracts and caches the toolchain to the runner's tool cache
 4. Optionally adds the toolchain's bin directory to PATH
-
-## Caching Mechanism
-
-- **Tool Cache**: By default, uses GitHub Actions' tool cache, shared between different workflow runs on the same runner
-- **Local Cache**: When `local-cache: true` is enabled, also uses GitHub Actions' cache mechanism to save the toolchain between workflow runs
 
 ## Building from Source
 
