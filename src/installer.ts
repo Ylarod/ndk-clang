@@ -114,6 +114,7 @@ async function extractArchive(downloadPath: string): Promise<string> {
   } else {
     // Linux and macOS can use tar with zstd
     return await tc.extractTar(downloadPath, undefined, [
+      "-x",
       "--use-compress-program=unzstd",
     ])
   }
