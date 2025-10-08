@@ -28277,13 +28277,7 @@ async function getClangRevision(ndkVersion) {
     return clangRevision;
 }
 async function extractArchiveTo(archive, dest) {
-    const platform = os.platform();
-    if (platform === "win32") {
-        await tc.extractTar(archive, dest, ["-x", "--use-compress-program=zstd"]);
-    }
-    else {
-        await tc.extractTar(archive, dest, ["-x", "--use-compress-program=unzstd"]);
-    }
+    await tc.extractTar(archive, dest, ["-x", "--use-compress-program=unzstd"]);
 }
 function checkCompatibility() {
     const supported = ["linux-x64", "win32-x64", "darwin-x64", "darwin-arm64"];

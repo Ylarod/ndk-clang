@@ -69,12 +69,7 @@ async function getClangRevision(ndkVersion: string): Promise<string> {
 }
 
 async function extractArchiveTo(archive: string, dest: string): Promise<void> {
-  const platform = os.platform()
-  if (platform === "win32") {
-    await tc.extractTar(archive, dest, ["-x", "--use-compress-program=zstd"])
-  } else {
-    await tc.extractTar(archive, dest, ["-x", "--use-compress-program=unzstd"])
-  }
+  await tc.extractTar(archive, dest, ["-x", "--use-compress-program=unzstd"])
 }
 
 function checkCompatibility() {
